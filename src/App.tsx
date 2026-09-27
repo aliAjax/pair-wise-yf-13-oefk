@@ -1,127 +1,96 @@
+import { useState } from "react";
+import { StoreProvider, useStore } from "./state/store";
+import { CrewBar } from "./components/CrewBar";
+import { ParameterBoard } from "./components/ParameterBoard";
+import { InspectionList } from "./components/InspectionList";
+import { IssuePanel } from "./components/IssuePanel";
+import { HandoverPanel } from "./components/HandoverPanel";
+import { ArchiveView } from "./components/ArchiveView";
+import { Panel } from "./components/ui";
+import { openIssues, poolIssues, watchIssues } from "./state/utils";
 import "./styles.css";
 
-const project = {
-  "sourceNo": 1,
-  "id": "hxyfront-62001",
-  "port": 62001,
-  "title": "船舶轮机值班记录",
-  "domain": "船舶轮机",
-  "prompt": "我想做一个面向船舶轮机值班的前端记录系统，轮机员可以记录主机转速、滑油压力、冷却水温、燃油消耗、舱底水状态和异常巡检项。页面需要有值班班次切换、机舱参数看板、异常记录时间线、交接班摘要和按设备筛选的历史记录。数据先保存在浏览器本地，后续方便扩展成船队统一管理。",
-  "palette": [
-    "#0f766e",
-    "#2563eb",
-    "#f97316"
-  ],
-  "metrics": [
-    "主机转速",
-    "滑油压力",
-    "冷却水温",
-    "燃油消耗"
-  ],
-  "filters": [
-    "主机",
-    "发电机",
-    "泵组",
-    "舱底水"
-  ],
-  "fields": [
-    "值班班次",
-    "设备名称",
-    "参数读数",
-    "异常描述",
-    "处理状态",
-    "交接备注"
-  ],
-  "records": [
-    [
-      "08-12班",
-      "主机",
-      "转速82rpm，滑油压力0.42MPa",
-      "正常巡检"
-    ],
-    [
-      "12-16班",
-      "发电机#2",
-      "冷却水温偏高",
-      "已安排复查"
-    ],
-    [
-      "16-20班",
-      "舱底水",
-      "液位接近警戒线",
-      "已记录交班"
-    ]
-  ]
-};
+type Tab = "watch" | "archive";
+
+function Workspace() {
+  const { state } = useStore();
+  const [tab, setTab] = useState<Tab>("watch");
+  const active = state.watches.find((watch) => watch.id === state.activeWatchId) ?? null;
+  const activeIssues = active ? watchIssues(state, active) : [];
+  const openCount = openIssues(activeIssues).length + poolIssues(state).length;
+
+  return (
+    <main className="app">
+      <header className="topbar">
+        <div>
+          <p className="kicker">轮机值更工作台</p>
+          <h1>机舱读数 · 巡检勾选 · 交班闭环</h1>
+        </div>
+        <nav className="tabs">
+          <button
+            className={tab === "watch" ? "tab-on" : ""}
+            onClick={() => setTab("watch")}
+          >
+            值更工作台
+          </button>
+          <button
+            className={tab === "archive" ? "tab-on" : ""}
+            onClick={() => setTab("archive")}
+          >
+            归档与遗留
+            {openCount > 0 ? <span className="tab-badge">{openCount}</span> : null}
+          </button>
+        </nav>
+      </header>
+
+      {tab === "watch" ? (
+        <>
+          <CrewBar />
+          {active ? (
+            <>
+              <Panel title="机舱参数看板" subtitle="四类参数 · 越安全界限自动生成未结事项">
+                <ParameterBoard watch={active} readOnly={false} />
+              </Panel>
+
+              <div className="two-col">
+                <Panel title="巡检清单" subtitle="逐台勾选，勾“异常”即开事项">
+                  <InspectionList watch={active} readOnly={false} />
+                </Panel>
+                <Panel
+                  title={`未结事项（${openIssues(activeIssues).length}）`}
+                  subtitle="处理人 / 复测读数 / 备注齐套才可完成"
+                >
+                  <IssuePanel issues={activeIssues} readOnly={false} />
+                </Panel>
+              </div>
+
+              <HandoverPanel watch={active} onHanded={() => setTab("archive")} />
+            </>
+          ) : (
+            <Panel title="等待接班" subtitle="尚未开始值更">
+              <p className="sub-note">
+                请在上方选定班组开工。开工后遗留未结事项将自动并入本班，全部闭环后方可交班。
+              </p>
+            </Panel>
+          )}
+        </>
+      ) : (
+        <ArchiveView />
+      )}
+
+      <footer className="footnote">
+        数据仅保存在本机浏览器（localStorage），不联网上传。参数定义见
+        src/definitions，状态流转见 src/state，界面见 src/components。
+      </footer>
+    </main>
+  );
+}
 
 function App() {
   return (
-    <main className="app">
-      <section className="hero">
-        <p>{project.id} · 源提示词{project.sourceNo} · Port {project.port}</p>
-        <h1>{project.title}</h1>
-        <span>{project.prompt}</span>
-      </section>
-
-      <section className="metrics">
-        {project.metrics.map((metric: string, index: number) => (
-          <article key={metric}>
-            <small>{metric}</small>
-            <strong>{[86, 14, 7, 32][index] ?? 12}</strong>
-          </article>
-        ))}
-      </section>
-
-      <section className="workspace">
-        <aside className="panel">
-          <h2>{project.domain}筛选</h2>
-          <div className="chips">
-            {project.filters.map((item: string) => (
-              <button key={item}>{item}</button>
-            ))}
-          </div>
-        </aside>
-
-        <section className="panel form-panel">
-          <div className="heading">
-            <div>
-              <p>专业字段</p>
-              <h2>新增记录</h2>
-            </div>
-            <button className="primary">保存草稿</button>
-          </div>
-          <div className="field-grid">
-            {project.fields.map((field: string) => (
-              <label key={field}>
-                <span>{field}</span>
-                <input placeholder={"填写" + field} />
-              </label>
-            ))}
-          </div>
-        </section>
-      </section>
-
-      <section className="panel">
-        <div className="heading">
-          <div>
-            <p>历史记录</p>
-            <h2>近期工作台</h2>
-          </div>
-          <button>导出摘要</button>
-        </div>
-        <div className="records">
-          {project.records.map((record: string[], index: number) => (
-            <article key={record.join("-")}>
-              <b>{String(index + 1).padStart(2, "0")}</b>
-              <div>
-                <h3>{record[0]}</h3>
-                <p>{record.slice(1).join(" · ")}</p>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-    </main>
+    <StoreProvider>
+      <Workspace />
+    </StoreProvider>
   );
 }
 
